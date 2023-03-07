@@ -13,6 +13,19 @@
 static TCHAR szWindowClass[] = _T("windows_class_name");
 static TCHAR szTitle[] = _T("windows_title");
 
+const unsigned char IS_IMAGE_TYPE_RGB = 0;
+const unsigned char IS_IMAGE_TYPE_RGBA = 1;
+
+struct IS_8BIT_IMAGE_STRUCT
+{
+    unsigned int width;
+    unsigned int height;
+    unsigned char type;
+    unsigned char *data;
+};
+
+typedef struct IS_8BIT_IMAGE_STRUCT IS_8BIT_IMAGE;
+
 void mHandleResizeMessage( //
     _In_ HWND hwnd,        //
     _In_ UINT uMsg,        //
@@ -202,9 +215,12 @@ int decode_png_bytes(   //
     return 0;
 }
 
-int load_png_file_and_convert_to_bitmap(
-    char *filepath)
+int load_png_file_and_convert_to_IS_IMAGE( //
+    char *filepath,                        //
+    IS_8BIT_IMAGE *is_image_pointer        //
+)
 {
+    int retval = 0;
     FILE *fp = fopen(filepath, "rb");
     if (!fp)
     {
@@ -252,60 +268,123 @@ int load_png_file_and_convert_to_bitmap(
     printf("color_type: %d\n", color_type);
     printf("bit_depth: %d\n", bit_depth);
 
-    int number_of_passes = png_set_interlace_handling(png_ptr);
-    png_read_update_info(png_ptr, info_ptr);
-
-    if (setjmp(png_jmpbuf(png_ptr)))
+    if (bit_depth != 8)
     {
-        printf("Error during read_image at %s:%d\n", __FILE__, __LINE__);
-        return -1;
+        printf("unsupported bit depth %d\n", bit_depth);
+        retval = -1;
     }
-
-    png_bytep *row_pointers = (png_bytep *)malloc(sizeof(png_bytep) * height);
-    for (int y = 0; y < height; y++)
+    else if (color_type != PNG_COLOR_TYPE_RGB)
     {
-        row_pointers[y] = (png_byte *)malloc(png_get_rowbytes(png_ptr, info_ptr));
+        printf("unsupported color type %d\n", color_type);
+        retval = -1;
     }
-
-    png_read_image(png_ptr, row_pointers);
-    fclose(fp);
-
-    // convert the PNG image data to a bitmap
-    // TODO
-    for (int i = 0; i < height; i++)
+    else
     {
-        png_byte *row = row_pointers[i];
-        for (int j = 0; j < width; j++)
+        int number_of_passes = png_set_interlace_handling(png_ptr);
+        png_read_update_info(png_ptr, info_ptr);
+
+        if (setjmp(png_jmpbuf(png_ptr)))
         {
-            png_byte *pixel_value_pointer = &(row[j * 3]);
-            // printf("Pixel at position [ %d - %d ] has RGBA values: %d - %d - %d - %d\n", j, i, pixel_value_pointer[0], pixel_value_pointer[1], pixel_value_pointer[2], pixel_value_pointer[3]);
-
-            printf("(%d, %d, %d) ", pixel_value_pointer[0], pixel_value_pointer[1], pixel_value_pointer[2]);
-            // TODO set pixel color
+            printf("Error during read_image at %s:%d\n", __FILE__, __LINE__);
+            return -1;
         }
 
-        printf("\n");
+        png_bytep *row_pointers = (png_bytep *)malloc(sizeof(png_bytep) * height);
+        for (int y = 0; y < height; y++)
+        {
+            row_pointers[y] = (png_byte *)malloc(png_get_rowbytes(png_ptr, info_ptr));
+        }
+
+        png_read_image(png_ptr, row_pointers);
+
+        // IS_8BIT_IMAGE is_image0 = {0};
+
+        is_image_pointer->width = (unsigned int)width;
+        is_image_pointer->height = (unsigned int)height;
+        is_image_pointer->type = IS_IMAGE_TYPE_RGB;
+        unsigned int data_length = (unsigned int)(width * height * 3);
+        is_image_pointer->data = (unsigned char *)malloc(data_length);
+        if (!is_image_pointer->data)
+        {
+            printf("malloc failed at %s:%d\n", __FILE__, __LINE__);
+            retval = -1;
+        }
+        else
+        {
+            // convert the PNG image data to a bitmap
+            // HBITMAP hbitmap0 = CreateBitmap( //
+            //     width,                       // [in] int nWidth
+            //     height,                      // [in] int nHeight
+            //     1,                           // [in] UINT cPlanes
+            //     24,                           // [in] UINT cBitsPerPel
+            // );
+            // TODO
+            for (int i = 0; i < height; i++)
+            {
+                png_byte *row = row_pointers[i];
+                for (int j = 0; j < width; j++)
+                {
+                    png_byte *pixel_value_pointer = &(row[j * 3]);
+                    // printf("(%d, %d, %d) ", pixel_value_pointer[0], pixel_value_pointer[1], pixel_value_pointer[2]);
+                    // TODO set pixel color
+                    int is_image_data_index = (i * width * 3) + (j * 3);
+                    is_image_pointer->data[is_image_data_index + 0] = pixel_value_pointer[0];
+                    is_image_pointer->data[is_image_data_index + 1] = pixel_value_pointer[1];
+                    is_image_pointer->data[is_image_data_index + 2] = pixel_value_pointer[2];
+                }
+
+                // printf("\n");
+            }
+        }
+
+        // free memory
+        for (int i = 0; i < height; i++)
+        {
+            free(row_pointers[i]);
+        }
+        free(row_pointers);
     }
 
-    // free memory
-    for (int i = 0; i < height; i++)
-    {
-        free(row_pointers[i]);
-    }
-    free(row_pointers);
+    fclose(fp);
 
-    return 0;
+    return retval;
 }
 
 int main()
 {
     char *image_filepath = "test_2x2_image.png";
-    load_png_file_and_convert_to_bitmap(image_filepath);
+    IS_8BIT_IMAGE is_image0 = {0};
+    int retval = load_png_file_and_convert_to_IS_IMAGE( //
+        image_filepath,                                 //
+        &is_image0                                      //
+    );
+    if (retval != 0)
+    {
+        printf("load_png_file_and_convert_to_IS_IMAGE failed at %s:%d\n", __FILE__, __LINE__);
+        return -1;
+    }
 
-    return wWinMain(           //
+    if (is_image0.data)
+    {
+        printf("is_image0.data: %p\n", is_image0.data);
+        printf("is_image0.width: %d\n", is_image0.width);
+        printf("is_image0.height: %d\n", is_image0.height);
+        printf("is_image0.type: %d\n", is_image0.type);
+    }
+    else
+    {
+        printf("is_image0.data is NULL\n");
+        return -1;
+    }
+
+    retval = wWinMain(         //
         GetModuleHandle(NULL), //
         NULL,                  //
         GetCommandLine(),      //
         SW_SHOWNORMAL          //
     );
+
+    free(is_image0.data);
+
+    return retval;
 };
