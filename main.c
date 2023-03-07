@@ -26,6 +26,13 @@ struct IS_8BIT_IMAGE_STRUCT
 
 typedef struct IS_8BIT_IMAGE_STRUCT IS_8BIT_IMAGE;
 
+IS_8BIT_IMAGE GLOBAL_IS_IMAGE = {
+    .width = 0,  //
+    .height = 0, //
+    .type = 0,   //
+    .data = NULL //
+};
+// BITMAP
 void mHandleResizeMessage( //
     _In_ HWND hwnd,        //
     _In_ UINT uMsg,        //
@@ -54,11 +61,55 @@ void mHandlePaintMessage( //
         return;
     }
 
+    // TODO learn about all these kinds of HDCs
     hdc = BeginPaint(hwnd, &ps);
+
+    // HDC screen_HDC = GetDC(NULL);
+    // HDC window_HDC = GetDC(hwnd);
+    // HDC memory_HDC = CreateCompatibleDC(window_HDC);
+
+    // DeleteObject(memory_HDC);
+    // ReleaseDC(NULL, screen_HDC);
+    // ReleaseDC(hwnd, window_HDC);
 
     // draw black background
     HBRUSH bgBrush = CreateSolidBrush(RGB(0, 0, 0));
     FillRect(hdc, &rc, bgBrush);
+
+    // validate GLOBAL_IS_IMAGE
+    if (GLOBAL_IS_IMAGE.data == 0)
+    {
+        printf("GLOBAL_IS_IMAGE.data is NULL\n");
+    }
+    else
+    {
+        HBITMAP bitmap_handle = CreateCompatibleBitmap(hdc, GLOBAL_IS_IMAGE.width, GLOBAL_IS_IMAGE.height);
+        HDC bitmap_hdc = CreateCompatibleDC(hdc);
+        SelectObject(bitmap_hdc, bitmap_handle);
+
+        // modify the pixel values
+        for (unsigned int y = 0; y < GLOBAL_IS_IMAGE.height; y++)
+        {
+            for (unsigned int x = 0; x < GLOBAL_IS_IMAGE.width; x++)
+            {
+                unsigned int index = (y * GLOBAL_IS_IMAGE.width + x) * 3;
+                unsigned char r = GLOBAL_IS_IMAGE.data[index + 0];
+                unsigned char g = GLOBAL_IS_IMAGE.data[index + 1];
+                unsigned char b = GLOBAL_IS_IMAGE.data[index + 2];
+
+                SetPixel(bitmap_hdc, x, y, RGB(r, g, b));
+            }
+        }
+
+        // draw the bitmap
+        BitBlt(hdc, 0, 0, GLOBAL_IS_IMAGE.width, GLOBAL_IS_IMAGE.height, bitmap_hdc, 0, 0, SRCCOPY);
+        // clean up
+        DeleteObject(bitmap_handle);
+        DeleteDC(bitmap_hdc);
+    }
+
+    DeleteObject(bgBrush);
+
     EndPaint(hwnd, &ps);
 }
 
@@ -290,59 +341,67 @@ int load_png_file_and_convert_to_IS_IMAGE( //
         }
 
         png_bytep *row_pointers = (png_bytep *)malloc(sizeof(png_bytep) * height);
-        for (int y = 0; y < height; y++)
-        {
-            row_pointers[y] = (png_byte *)malloc(png_get_rowbytes(png_ptr, info_ptr));
-        }
-
-        png_read_image(png_ptr, row_pointers);
-
-        // IS_8BIT_IMAGE is_image0 = {0};
-
-        is_image_pointer->width = (unsigned int)width;
-        is_image_pointer->height = (unsigned int)height;
-        is_image_pointer->type = IS_IMAGE_TYPE_RGB;
-        unsigned int data_length = (unsigned int)(width * height * 3);
-        is_image_pointer->data = (unsigned char *)malloc(data_length);
-        if (!is_image_pointer->data)
+        if (!row_pointers)
         {
             printf("malloc failed at %s:%d\n", __FILE__, __LINE__);
             retval = -1;
         }
         else
         {
-            // convert the PNG image data to a bitmap
-            // HBITMAP hbitmap0 = CreateBitmap( //
-            //     width,                       // [in] int nWidth
-            //     height,                      // [in] int nHeight
-            //     1,                           // [in] UINT cPlanes
-            //     24,                           // [in] UINT cBitsPerPel
-            // );
-            // TODO
+            for (int y = 0; y < height; y++)
+            {
+                row_pointers[y] = (png_byte *)malloc(png_get_rowbytes(png_ptr, info_ptr));
+            }
+
+            png_read_image(png_ptr, row_pointers);
+
+            // IS_8BIT_IMAGE is_image0 = {0};
+
+            is_image_pointer->width = (unsigned int)width;
+            is_image_pointer->height = (unsigned int)height;
+            is_image_pointer->type = IS_IMAGE_TYPE_RGB;
+            unsigned int data_length = (unsigned int)(width * height * 3);
+            is_image_pointer->data = (unsigned char *)malloc(data_length);
+            if (!is_image_pointer->data)
+            {
+                printf("malloc failed at %s:%d\n", __FILE__, __LINE__);
+                retval = -1;
+            }
+            else
+            {
+                // convert the PNG image data to a bitmap
+                // HBITMAP hbitmap0 = CreateBitmap( //
+                //     width,                       // [in] int nWidth
+                //     height,                      // [in] int nHeight
+                //     1,                           // [in] UINT cPlanes
+                //     24,                           // [in] UINT cBitsPerPel
+                // );
+                // TODO
+                for (int i = 0; i < height; i++)
+                {
+                    png_byte *row = row_pointers[i];
+                    for (int j = 0; j < width; j++)
+                    {
+                        png_byte *pixel_value_pointer = &(row[j * 3]);
+                        // printf("(%d, %d, %d) ", pixel_value_pointer[0], pixel_value_pointer[1], pixel_value_pointer[2]);
+                        // TODO set pixel color
+                        int is_image_data_index = (i * width * 3) + (j * 3);
+                        is_image_pointer->data[is_image_data_index + 0] = pixel_value_pointer[0];
+                        is_image_pointer->data[is_image_data_index + 1] = pixel_value_pointer[1];
+                        is_image_pointer->data[is_image_data_index + 2] = pixel_value_pointer[2];
+                    }
+
+                    // printf("\n");
+                }
+            }
+
+            // free memory
             for (int i = 0; i < height; i++)
             {
-                png_byte *row = row_pointers[i];
-                for (int j = 0; j < width; j++)
-                {
-                    png_byte *pixel_value_pointer = &(row[j * 3]);
-                    // printf("(%d, %d, %d) ", pixel_value_pointer[0], pixel_value_pointer[1], pixel_value_pointer[2]);
-                    // TODO set pixel color
-                    int is_image_data_index = (i * width * 3) + (j * 3);
-                    is_image_pointer->data[is_image_data_index + 0] = pixel_value_pointer[0];
-                    is_image_pointer->data[is_image_data_index + 1] = pixel_value_pointer[1];
-                    is_image_pointer->data[is_image_data_index + 2] = pixel_value_pointer[2];
-                }
-
-                // printf("\n");
+                free(row_pointers[i]);
             }
+            free(row_pointers);
         }
-
-        // free memory
-        for (int i = 0; i < height; i++)
-        {
-            free(row_pointers[i]);
-        }
-        free(row_pointers);
     }
 
     fclose(fp);
@@ -352,7 +411,8 @@ int load_png_file_and_convert_to_IS_IMAGE( //
 
 int main()
 {
-    char *image_filepath = "test_2x2_image.png";
+    // char *image_filepath = "test_2x2_image.png";
+    char *image_filepath = "input2.png";
     IS_8BIT_IMAGE is_image0 = {0};
     int retval = load_png_file_and_convert_to_IS_IMAGE( //
         image_filepath,                                 //
@@ -376,6 +436,11 @@ int main()
         printf("is_image0.data is NULL\n");
         return -1;
     }
+
+    GLOBAL_IS_IMAGE.width = is_image0.width;
+    GLOBAL_IS_IMAGE.height = is_image0.height;
+    GLOBAL_IS_IMAGE.type = is_image0.type;
+    GLOBAL_IS_IMAGE.data = is_image0.data;
 
     retval = wWinMain(         //
         GetModuleHandle(NULL), //
