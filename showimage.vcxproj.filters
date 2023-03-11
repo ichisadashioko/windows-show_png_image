@@ -167,5 +167,8 @@
     <ClInclude Include="libpng\pnglibconf.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="termcolor.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>
