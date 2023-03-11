@@ -151,6 +151,8 @@ void mHandlePaintMessage( //
             DIB_RGB_COLORS          // [in] UINT colorUse - Indicates whether the bmiColors contains explicit red, green, blue (RGB) values or palette indexes. The fuColorUse parameter must be one of the following values. DIB_PAL_COLORS - The color table consists of an array of 16-bit indexes into the logical palette of the device context identified by the HDC parameter. DIB_RGB_COLORS - The color table is provided and contains literal RGB values.
         );
 
+        printf("SetDIBits returns %d at %s:%d\n", _retval, __FILE__, __LINE__);
+
         // draw the bitmap
         BitBlt(hdc, 0, 0, GLOBAL_IS_IMAGE.width, GLOBAL_IS_IMAGE.height, bitmap_hdc, 0, 0, SRCCOPY);
         // clean up
@@ -412,12 +414,18 @@ int load_png_file_and_convert_to_IS_IMAGE( //
             for (int j = 0; j < width; j++)
             {
                 png_byte *pixel_value_pointer = &(row[j * 3]);
-                // printf("(%d, %d, %d) ", pixel_value_pointer[0], pixel_value_pointer[1], pixel_value_pointer[2]);
-                // TODO set pixel color
                 int is_image_data_index = (i * width * 3) + (j * 3);
-                is_image_pointer->data[is_image_data_index + 0] = pixel_value_pointer[0];
-                is_image_pointer->data[is_image_data_index + 1] = pixel_value_pointer[1];
-                is_image_pointer->data[is_image_data_index + 2] = pixel_value_pointer[2];
+                // WTF? why is it BGR?
+                unsigned char b = pixel_value_pointer[0];
+                unsigned char g = pixel_value_pointer[1];
+                unsigned char r = pixel_value_pointer[2];
+                // is_image_pointer->bgr_data[is_image_data_index + 0] = b;
+                // is_image_pointer->bgr_data[is_image_data_index + 1] = g;
+                // is_image_pointer->bgr_data[is_image_data_index + 2] = r;
+
+                is_image_pointer->data[is_image_data_index + 0] = r;
+                is_image_pointer->data[is_image_data_index + 1] = g;
+                is_image_pointer->data[is_image_data_index + 2] = b;
             }
         }
 
