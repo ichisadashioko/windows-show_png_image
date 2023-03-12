@@ -24,6 +24,7 @@ struct IS_8BIT_IMAGE_STRUCT
     unsigned int height;
     unsigned char type;
     unsigned char *data;
+    unsigned char *bgr_data;
 };
 
 typedef struct IS_8BIT_IMAGE_STRUCT IS_8BIT_IMAGE;
@@ -130,9 +131,11 @@ void mHandlePaintMessage( //
         BITMAPINFO bitmap_info0 = {0};
         bitmap_info0.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
         bitmap_info0.bmiHeader.biWidth = GLOBAL_IS_IMAGE.width;
-        bitmap_info0.bmiHeader.biHeight = GLOBAL_IS_IMAGE.height;
+        // bitmap_info0.bmiHeader.biHeight = GLOBAL_IS_IMAGE.height;
+        bitmap_info0.bmiHeader.biHeight = -GLOBAL_IS_IMAGE.height;
         bitmap_info0.bmiHeader.biPlanes = 1;
         bitmap_info0.bmiHeader.biBitCount = 24;
+        // bitmap_info0.bmiHeader.biBitCount = -24;
         bitmap_info0.bmiHeader.biCompression = BI_RGB;
         bitmap_info0.bmiHeader.biSizeImage = 0;
         bitmap_info0.bmiHeader.biXPelsPerMeter = 0;
@@ -141,27 +144,46 @@ void mHandlePaintMessage( //
         bitmap_info0.bmiHeader.biClrImportant = 0;
 
         // modify the pixel values
-        int _retval = SetDIBits(    //
-            bitmap_hdc,             // [in] HDC hdc - A handle to a device context.
-            bitmap_handle,          // [in] HBITMAP hbm - A handle to the compatible bitmap (DDB) that is to be altered using the color data from the specified DIB.
-            0,                      // [in] UINT start - The starting scan line for the device-independent color data in the array pointed to by the lpvBits parameter.
-            GLOBAL_IS_IMAGE.height, // [in] UINT cLines - The number of scan lines found in the array containing device-independent color data.
-            GLOBAL_IS_IMAGE.data,   // [in] const VOID *lpBits - A pointer to the DIB color data, stored as an array of bytes. The format of the bitmap values depends on the biBitCount member of the BITMAPINFO structure pointed to by the lpbmi parameter.
-            &bitmap_info0,          // [in] const BITMAPINFO *lpbmi, - A pointer to a BITMAPINFO structure that contains information about the DIB.
-            DIB_RGB_COLORS          // [in] UINT colorUse - Indicates whether the bmiColors contains explicit red, green, blue (RGB) values or palette indexes. The fuColorUse parameter must be one of the following values. DIB_PAL_COLORS - The color table consists of an array of 16-bit indexes into the logical palette of the device context identified by the HDC parameter. DIB_RGB_COLORS - The color table is provided and contains literal RGB values.
+        int _retval = SetDIBits(      //
+            bitmap_hdc,               // [in] HDC hdc - A handle to a device context.
+            bitmap_handle,            // [in] HBITMAP hbm - A handle to the compatible bitmap (DDB) that is to be altered using the color data from the specified DIB.
+            0,                        // [in] UINT start - The starting scan line for the device-independent color data in the array pointed to by the lpvBits parameter.
+            GLOBAL_IS_IMAGE.height,   // [in] UINT cLines - The number of scan lines found in the array containing device-independent color data.
+            GLOBAL_IS_IMAGE.bgr_data, // [in] const VOID *lpBits - A pointer to the DIB color data, stored as an array of bytes. The format of the bitmap values depends on the biBitCount member of the BITMAPINFO structure pointed to by the lpbmi parameter.
+            // GLOBAL_IS_IMAGE.data, // [in] const VOID *lpBits - A pointer to the DIB color data, stored as an array of bytes. The format of the bitmap values depends on the biBitCount member of the BITMAPINFO structure pointed to by the lpbmi parameter.
+            &bitmap_info0, // [in] const BITMAPINFO *lpbmi, - A pointer to a BITMAPINFO structure that contains information about the DIB.
+            DIB_RGB_COLORS // [in] UINT colorUse - Indicates whether the bmiColors contains explicit red, green, blue (RGB) values or palette indexes. The fuColorUse parameter must be one of the following values. DIB_PAL_COLORS - The color table consists of an array of 16-bit indexes into the logical palette of the device context identified by the HDC parameter. DIB_RGB_COLORS - The color table is provided and contains literal RGB values.
         );
+
+        if (_retval == ERROR_INVALID_PARAMETER)
+        {
+            printf("SetDIBits ERROR_INVALID_PARAMETER at %s:%d\n", __FILE__, __LINE__);
+        }
+        else if (_retval != GLOBAL_IS_IMAGE.height)
+        {
+            printf("SetDIBits number of lines copied is not equal to the number of lines in the image (%d != %d). %s:%d\n", _retval, GLOBAL_IS_IMAGE.height, __FILE__, __LINE__);
+        }
 
         printf("SetDIBits returns %d at %s:%d\n", _retval, __FILE__, __LINE__);
 
         // draw the bitmap
-        BitBlt(hdc, 0, 0, GLOBAL_IS_IMAGE.width, GLOBAL_IS_IMAGE.height, bitmap_hdc, 0, 0, SRCCOPY);
+        BitBlt(                     //
+            hdc,                    //
+            0,                      //
+            0,                      //
+            GLOBAL_IS_IMAGE.width,  //
+            GLOBAL_IS_IMAGE.height, //
+            bitmap_hdc,             //
+            0,                      //
+            0,                      //
+            SRCCOPY                 //
+        );
         // clean up
         DeleteObject(bitmap_handle);
         DeleteDC(bitmap_hdc);
     }
 
     DeleteObject(bgBrush);
-
     EndPaint(hwnd, &ps);
 }
 
@@ -396,18 +418,17 @@ int load_png_file_and_convert_to_IS_IMAGE( //
         png_bytep *row_pointers = (png_bytep *)mMalloc(png_bytep_array_size, __FILE__, __LINE__);
         for (int y = 0; y < height; y++)
         {
-            row_pointers[y] = (png_byte *)malloc(png_get_rowbytes(png_ptr, info_ptr));
+            row_pointers[y] = (png_byte *)mMalloc(png_get_rowbytes(png_ptr, info_ptr), __FILE__, __LINE__);
         }
 
         png_read_image(png_ptr, row_pointers);
-
-        // IS_8BIT_IMAGE is_image0 = {0};
 
         is_image_pointer->width = (unsigned int)width;
         is_image_pointer->height = (unsigned int)height;
         is_image_pointer->type = IS_IMAGE_TYPE_RGB;
         size_t data_length = (size_t)(width * height * 3);
         is_image_pointer->data = (unsigned char *)mMalloc(data_length, __FILE__, __LINE__);
+        is_image_pointer->bgr_data = (unsigned char *)mMalloc(data_length, __FILE__, __LINE__);
         for (int i = 0; i < height; i++)
         {
             png_byte *row = row_pointers[i];
@@ -416,16 +437,17 @@ int load_png_file_and_convert_to_IS_IMAGE( //
                 png_byte *pixel_value_pointer = &(row[j * 3]);
                 int is_image_data_index = (i * width * 3) + (j * 3);
                 // WTF? why is it BGR?
-                unsigned char b = pixel_value_pointer[0];
+                unsigned char r = pixel_value_pointer[0];
                 unsigned char g = pixel_value_pointer[1];
-                unsigned char r = pixel_value_pointer[2];
-                // is_image_pointer->bgr_data[is_image_data_index + 0] = b;
-                // is_image_pointer->bgr_data[is_image_data_index + 1] = g;
-                // is_image_pointer->bgr_data[is_image_data_index + 2] = r;
+                unsigned char b = pixel_value_pointer[2];
 
                 is_image_pointer->data[is_image_data_index + 0] = r;
                 is_image_pointer->data[is_image_data_index + 1] = g;
                 is_image_pointer->data[is_image_data_index + 2] = b;
+
+                is_image_pointer->bgr_data[is_image_data_index + 0] = b;
+                is_image_pointer->bgr_data[is_image_data_index + 1] = g;
+                is_image_pointer->bgr_data[is_image_data_index + 2] = r;
             }
         }
 
@@ -470,10 +492,47 @@ int main()
         return -1;
     }
 
+    if (0)
+    {
+        printf("RGB data\n");
+        for (int y = 0; y < is_image0.height; y++)
+        {
+            for (int x = 0; x < is_image0.width; x++)
+            {
+                int index = (y * is_image0.width * 3) + (x * 3);
+                unsigned char r = is_image0.data[index + 0];
+                unsigned char g = is_image0.data[index + 1];
+                unsigned char b = is_image0.data[index + 2];
+                // printf("[%d %d %d]", r, g, b);
+                printf("[%3d %3d %3d]", r, g, b);
+            }
+
+            printf("\n");
+        }
+    }
+
     GLOBAL_IS_IMAGE.width = is_image0.width;
     GLOBAL_IS_IMAGE.height = is_image0.height;
     GLOBAL_IS_IMAGE.type = is_image0.type;
     GLOBAL_IS_IMAGE.data = is_image0.data;
+    GLOBAL_IS_IMAGE.bgr_data = is_image0.bgr_data;
+
+    // // create device-independent bitmap
+    // HDC hdc = GetDC(NULL);
+    // HDC hdc_mem = CreateCompatibleDC(hdc);
+    // HBITMAP hbitmap = CreateCompatibleBitmap(hdc, is_image0.width, is_image0.height);
+    // SelectObject(hdc_mem, hbitmap);
+
+    // BITMAPINFO bitmap_info = {0};
+    // SetDIBits(            //
+    //     hdc_mem,          //
+    //     hbitmap,          //
+    //     0,                //
+    //     is_image0.height, //
+    //     is_image0.data,   //
+    //     &bitmap_info,     //
+    //     DIB_RGB_COLORS    //
+    // );
 
     retval = wWinMain(         //
         GetModuleHandle(NULL), //
